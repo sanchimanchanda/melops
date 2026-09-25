@@ -1,0 +1,38 @@
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Virtual Environments
+venv/
+.venv/
+env/
+.env
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+dataset/
+models/
+output/
+*.zip
+Team_EntityResolvers_submission.zip
+.agents/
+tech_stack_guidelines.md
+execution.md
+Documentation_template.md
+AGENTS.md
+student_resource/

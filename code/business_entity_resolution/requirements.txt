@@ -1,0 +1,25 @@
+# Core Data & Array Processing
+numpy>=1.24.0
+pandas>=2.0.0
+polars>=0.20.0
+scipy>=1.10.0
+
+# Feature Extraction & String Similarity
+rapidfuzz>=3.6.0
+scikit-learn>=1.3.0
+nltk>=3.8.0
+
+# Machine Learning & Gradient Boosting
+lightgbm>=4.1.0
+xgboost>=2.0.0
+catboost>=1.2.0
+
+# Deep Learning & Embeddings (MIT/Apache 2.0)
+torch>=2.1.0
+sentence-transformers>=2.3.0
+faiss-cpu>=1.7.4
+
+# Utilities & Progress
+tqdm>=4.66.0
+joblib>=1.3.0
+pyyaml>=6.0
