@@ -10,6 +10,14 @@ def extract_numeric_tokens(text: str) -> List[str]:
         return []
     return re.findall(r'\b\d+\b', str(text))
 
+def get_char_ngrams(text: str, n: int) -> set:
+    if not text:
+        return set()
+    text = text.replace(" ", "")
+    if len(text) < n:
+        return {text}
+    return set(text[i:i+n] for i in range(len(text)-n+1))
+
 def compute_pairwise_features(
     s1_name: str,
     s1_addr: str,
@@ -76,8 +84,18 @@ def compute_pairwise_features(
     full_cand = cand_norm_name + " " + cand_norm_addr
     full_token_set = fuzz.token_set_ratio(full_s1, full_cand) / 100.0
     
-    # 7. Source ID indicator
+    # 7. Character 3-Gram Jaccard (Proxy for TF-IDF Cosine)
+    s1_n3 = get_char_ngrams(s1_norm_name, 3)
+    c_n3 = get_char_ngrams(cand_norm_name, 3)
+    name_n3_jaccard = len(s1_n3.intersection(c_n3)) / len(s1_n3.union(c_n3)) if (s1_n3 or c_n3) else 0.0
+    
+    s1_a3 = get_char_ngrams(s1_norm_addr, 3)
+    c_a3 = get_char_ngrams(cand_norm_addr, 3)
+    addr_n3_jaccard = len(s1_a3.intersection(c_a3)) / len(s1_a3.union(c_a3)) if (s1_a3 or c_a3) else 0.0
+    
+    # 8. Source ID indicator & Country match
     is_s2 = 1.0 if str(cand_name).startswith("S2-") else 0.0
+    country_match = 1.0 if s1_country == cand_country and s1_country else 0.0
     
     return [
         name_lev_ratio,
@@ -99,7 +117,10 @@ def compute_pairwise_features(
         token_jaccard,
         len_ratio_name,
         full_token_set,
-        is_s2
+        name_n3_jaccard,
+        addr_n3_jaccard,
+        is_s2,
+        country_match
     ]
 
 FEATURE_NAMES = [
@@ -122,5 +143,8 @@ FEATURE_NAMES = [
     "token_jaccard",
     "len_ratio_name",
     "full_token_set",
-    "is_s2"
+    "name_n3_jaccard",
+    "addr_n3_jaccard",
+    "is_s2",
+    "country_match"
 ]

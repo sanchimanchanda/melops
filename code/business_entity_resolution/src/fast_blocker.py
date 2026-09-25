@@ -61,6 +61,9 @@ class FastOptimizedBlocker:
             compact = norm_name.replace(" ", "")
             if len(compact) >= 5:
                 self.inverted_index[f"c5:{compact[:5]}"].append(cid)
+            if len(compact) >= 4:
+                self.inverted_index[f"c4_pre:{compact[:4]}"].append(cid)
+                self.inverted_index[f"c4_suf:{compact[-4:]}"].append(cid)
                 
             # 2. Address Keys
             a_tokens = norm_addr.split()
@@ -113,6 +116,16 @@ class FastOptimizedBlocker:
                 if matched:
                     for cid in (matched if len(matched) <= max_p else matched[:max_p]):
                         counts[cid] += 2
+                        
+            if len(compact) >= 4:
+                matched_pre = self.inverted_index.get(f"c4_pre:{compact[:4]}")
+                if matched_pre:
+                    for cid in (matched_pre if len(matched_pre) <= max_p else matched_pre[:max_p]):
+                        counts[cid] += 1
+                matched_suf = self.inverted_index.get(f"c4_suf:{compact[-4:]}")
+                if matched_suf:
+                    for cid in (matched_suf if len(matched_suf) <= max_p else matched_suf[:max_p]):
+                        counts[cid] += 1
                         
             # Address keys
             a_tokens = norm_addr.split()

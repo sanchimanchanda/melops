@@ -115,7 +115,7 @@ def run_end_to_end_pipeline():
             val_gt_map[row["source1_entity_id"]] = set()
             
     # Sample training S1 entities (excluding validation)
-    train_s1_sample = train_s1_full.filter(~pl.col("entity_id").is_in(val_s1_ids)).head(50000)
+    train_s1_sample = train_s1_full.filter(~pl.col("entity_id").is_in(val_s1_ids)).head(400000)
     sample_ids = set(train_s1_sample["entity_id"].to_list())
     train_gt_map = {}
     for row in train_gt_full.filter(pl.col("source1_entity_id").is_in(sample_ids)).iter_rows(named=True):
@@ -132,11 +132,11 @@ def run_end_to_end_pipeline():
     # STAGE 2: Country-Partitioned Feature Extraction & Assembly
     # ---------------------------------------------------------
     print("\n🧠 2. Country-Partitioned Feature Extraction...")
-    X_train_us, y_train_us, blocker_us = build_training_dataset_country(train_s1_sample, train_corpus, train_gt_map, "US")
-    X_train_in, y_train_in, blocker_in = build_training_dataset_country(train_s1_sample, train_corpus, train_gt_map, "India")
+    X_train_us, y_train_us, blocker_us = build_training_dataset_country(train_s1_sample, train_corpus, train_gt_map, "US", max_negatives=6)
+    X_train_in, y_train_in, blocker_in = build_training_dataset_country(train_s1_sample, train_corpus, train_gt_map, "India", max_negatives=6)
     
-    X_val_us, y_val_us, _ = build_training_dataset_country(val_s1, train_corpus, val_gt_map, "US")
-    X_val_in, y_val_in, _ = build_training_dataset_country(val_s1, train_corpus, val_gt_map, "India")
+    X_val_us, y_val_us, _ = build_training_dataset_country(val_s1, train_corpus, val_gt_map, "US", max_negatives=6)
+    X_val_in, y_val_in, _ = build_training_dataset_country(val_s1, train_corpus, val_gt_map, "India", max_negatives=6)
     
     X_train = np.vstack([X_train_us, X_train_in])
     y_train = np.concatenate([y_train_us, y_train_in])
