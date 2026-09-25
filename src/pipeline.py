@@ -248,7 +248,23 @@ def run_end_to_end_pipeline():
                         valid_cids.append(cid)
                 if cand_feats:
                     probs = model.predict_proba(np.array(cand_feats, dtype=np.float32))
-                    matched_ids = [cid for cid, p in zip(valid_cids, probs) if p >= best_threshold]
+                    
+                    scored = []
+                    for cid, p in zip(valid_cids, probs):
+                        scored.append((cid, float(p)))
+                    scored.sort(key=lambda x: x[1], reverse=True)
+                    
+                    matched_ids = []
+                    has_s2, has_s3 = False, False
+                    for cid, p in scored:
+                        if p >= best_threshold:
+                            if cid.startswith("S2-") and not has_s2:
+                                matched_ids.append(cid)
+                                has_s2 = True
+                            elif cid.startswith("S3-") and not has_s3:
+                                matched_ids.append(cid)
+                                has_s3 = True
+                                
                     final_matching_results[s1_id] = matched_ids
                     
     # ---------------------------------------------------------
