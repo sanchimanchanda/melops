@@ -26,7 +26,8 @@ class EntityMatchingModel:
             "n_estimators": 500,
             "random_state": 42,
             "n_jobs": -1,
-            "verbose": -1
+            "verbose": -1,
+            "is_unbalance": True
         }
         self.model = lgb.LGBMClassifier(**self.params)
         

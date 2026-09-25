@@ -5,6 +5,8 @@ import re
 import time
 import unicodedata
 import polars as pl
+import unicodedata
+import math
 from collections import defaultdict
 from typing import Dict, List, Set, Tuple
 
@@ -36,6 +38,7 @@ class FastOptimizedBlocker:
         self.max_postings = max_postings_per_key
         self.inverted_index = defaultdict(list)
         self.records = {} # id -> (norm_name, norm_addr)
+        self.idf = {}
         
     def fit_corpus(self, df_corpus: pl.DataFrame):
         t0 = time.time()
@@ -73,8 +76,11 @@ class FastOptimizedBlocker:
             if nums and words:
                 self.inverted_index[f"an:{nums[0]}_{words[0]}"].append(cid)
             for num in nums:
-                if len(num) in (5, 6):
                     self.inverted_index[f"pin:{num}"].append(cid)
+                    
+        N = len(ids)
+        for k, v in self.inverted_index.items():
+            self.idf[k] = math.log((N + 1.0) / (len(v) + 1.0)) + 1.0
                     
         print(f"   Indexed {n_rows:,} records in {time.time() - t0:.2f}s. Unique keys: {len(self.inverted_index):,}")
 
@@ -99,33 +105,43 @@ class FastOptimizedBlocker:
             
             # Name pair key
             if len(tokens) >= 2:
-                matched = self.inverted_index.get(f"n2:{tokens[0]}_{tokens[1]}")
+                k = f"n2:{tokens[0]}_{tokens[1]}"
+                matched = self.inverted_index.get(k)
                 if matched:
+                    w = self.idf[k] * 2.0
                     for cid in (matched if len(matched) <= max_p else matched[:max_p]):
-                        counts[cid] += 3
+                        counts[cid] += w
             elif len(tokens) == 1 and len(tokens[0]) >= 4:
-                matched = self.inverted_index.get(f"n1:{tokens[0]}")
+                k = f"n1:{tokens[0]}"
+                matched = self.inverted_index.get(k)
                 if matched:
+                    w = self.idf[k] * 2.0
                     for cid in (matched if len(matched) <= max_p else matched[:max_p]):
-                        counts[cid] += 3
+                        counts[cid] += w
                         
             # Compact 5-gram key
             compact = norm_name.replace(" ", "")
             if len(compact) >= 5:
-                matched = self.inverted_index.get(f"c5:{compact[:5]}")
+                k = f"c5:{compact[:5]}"
+                matched = self.inverted_index.get(k)
                 if matched:
+                    w = self.idf[k] * 1.5
                     for cid in (matched if len(matched) <= max_p else matched[:max_p]):
-                        counts[cid] += 2
+                        counts[cid] += w
                         
             if len(compact) >= 4:
-                matched_pre = self.inverted_index.get(f"c4_pre:{compact[:4]}")
+                k_pre = f"c4_pre:{compact[:4]}"
+                matched_pre = self.inverted_index.get(k_pre)
                 if matched_pre:
+                    w = self.idf[k_pre] * 1.0
                     for cid in (matched_pre if len(matched_pre) <= max_p else matched_pre[:max_p]):
-                        counts[cid] += 1
-                matched_suf = self.inverted_index.get(f"c4_suf:{compact[-4:]}")
+                        counts[cid] += w
+                k_suf = f"c4_suf:{compact[-4:]}"
+                matched_suf = self.inverted_index.get(k_suf)
                 if matched_suf:
+                    w = self.idf[k_suf] * 1.0
                     for cid in (matched_suf if len(matched_suf) <= max_p else matched_suf[:max_p]):
-                        counts[cid] += 1
+                        counts[cid] += w
                         
             # Address keys
             a_tokens = norm_addr.split()
@@ -133,17 +149,21 @@ class FastOptimizedBlocker:
             words = [t for t in a_tokens if not t.isdigit() and len(t) >= 4 and t not in STOPWORDS]
             
             if nums and words:
-                matched = self.inverted_index.get(f"an:{nums[0]}_{words[0]}")
+                k = f"an:{nums[0]}_{words[0]}"
+                matched = self.inverted_index.get(k)
                 if matched:
+                    w = self.idf[k] * 1.5
                     for cid in (matched if len(matched) <= max_p else matched[:max_p]):
-                        counts[cid] += 2
+                        counts[cid] += w
                         
             for num in nums:
                 if len(num) in (5, 6):
-                    matched = self.inverted_index.get(f"pin:{num}")
+                    k = f"pin:{num}"
+                    matched = self.inverted_index.get(k)
                     if matched:
+                        w = self.idf[k] * 1.0
                         for cid in (matched if len(matched) <= max_p else matched[:max_p]):
-                            counts[cid] += 2
+                            counts[cid] += w
                             
             if counts:
                 sorted_c = sorted(counts.items(), key=lambda x: x[1], reverse=True)

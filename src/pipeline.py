@@ -30,7 +30,7 @@ def build_training_dataset_country(
     part_corpus = df_corpus.filter(pl.col("country") == country)
     print(f"   Building training data for [{country}]: {len(part_s1):,} S1 queries, {len(part_corpus):,} corpus rows...")
     
-    blocker = FastOptimizedBlocker(max_candidates=12)
+    blocker = FastOptimizedBlocker(max_candidates=30)
     blocker.fit_corpus(part_corpus)
     
     ids = part_s1["entity_id"].to_list()
@@ -58,11 +58,10 @@ def build_training_dataset_country(
         true_matches = gt_map.get(s1_id, set())
         candidates = cand_map.get(s1_id, [])
         
-        # Positives
         for mid in true_matches:
             if mid in corpus_records:
                 c_nname, c_naddr = corpus_records[mid]
-                feats = compute_pairwise_features(s1_name, s1_addr, s1_nname, s1_naddr, "", "", c_nname, c_naddr)
+                feats = compute_pairwise_features(s1_name, s1_addr, s1_nname, s1_naddr, mid, "", c_nname, c_naddr)
                 X_list.append(feats)
                 y_list.append(1)
                 
@@ -71,7 +70,7 @@ def build_training_dataset_country(
         for cid in candidates:
             if cid not in true_matches and cid in corpus_records:
                 c_nname, c_naddr = corpus_records[cid]
-                feats = compute_pairwise_features(s1_name, s1_addr, s1_nname, s1_naddr, "", "", c_nname, c_naddr)
+                feats = compute_pairwise_features(s1_name, s1_addr, s1_nname, s1_naddr, cid, "", c_nname, c_naddr)
                 X_list.append(feats)
                 y_list.append(0)
                 neg_c += 1
@@ -101,10 +100,10 @@ def run_end_to_end_pipeline():
     train_s3_full = pl.read_csv("student_resource/dataset/train/train_source3.tsv", separator="\t")
     train_gt_full = pl.read_csv("student_resource/dataset/train/train_ground_truth.tsv", separator="\t")
     
-    val_s1 = pl.read_csv("dataset/validation/val_source1.tsv", separator="\t").head(10000)
-    val_gt = pl.read_csv("dataset/validation/val_ground_truth.tsv", separator="\t")
+    # Properly sample a stratified validation set to prevent threshold bias
+    val_s1 = train_s1_full.sample(n=30000, seed=42)
     val_s1_ids = set(val_s1["entity_id"].to_list())
-    val_gt = val_gt.filter(pl.col("source1_entity_id").is_in(val_s1_ids))
+    val_gt = train_gt_full.filter(pl.col("source1_entity_id").is_in(val_s1_ids))
     
     val_gt_map = {}
     for row in val_gt.iter_rows(named=True):
@@ -183,7 +182,7 @@ def run_end_to_end_pipeline():
                 for cid in candidates:
                     if cid in country_blocker.records:
                         c_nname, c_naddr = country_blocker.records[cid]
-                        feats = compute_pairwise_features(s1_name, s1_addr, s1_nname, s1_naddr, "", "", c_nname, c_naddr)
+                        feats = compute_pairwise_features(s1_name, s1_addr, s1_nname, s1_naddr, cid, "", c_nname, c_naddr)
                         cand_feats.append(feats)
                         valid_cids.append(cid)
                 if cand_feats:
@@ -218,7 +217,7 @@ def run_end_to_end_pipeline():
         part_corpus = test_corpus_full.filter(pl.col("country") == country)
         print(f"      S1: {len(part_s1):,} queries | Corpus (S2+S3): {len(part_corpus):,} records")
         
-        country_blocker = FastOptimizedBlocker(max_candidates=12)
+        country_blocker = FastOptimizedBlocker(max_candidates=30)
         country_blocker.fit_corpus(part_corpus)
         cand_map = country_blocker.query(part_s1)
         
@@ -244,7 +243,7 @@ def run_end_to_end_pipeline():
                 for cid in candidates:
                     if cid in country_blocker.records:
                         c_nname, c_naddr = country_blocker.records[cid]
-                        feats = compute_pairwise_features(s1_name, s1_addr, s1_nname, s1_naddr, "", "", c_nname, c_naddr)
+                        feats = compute_pairwise_features(s1_name, s1_addr, s1_nname, s1_naddr, cid, "", c_nname, c_naddr)
                         cand_feats.append(feats)
                         valid_cids.append(cid)
                 if cand_feats:

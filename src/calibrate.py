@@ -40,8 +40,8 @@ def calibrate_threshold(
     Finds the optimal probability threshold T maximizing Macro F0.5.
     Returns (best_threshold, best_f05, baseline_f05).
     """
-    thresholds = np.linspace(0.35, 0.85, 26)
-    best_t = 0.55
+    thresholds = np.linspace(0.15, 0.85, 41)
+    best_t = 0.50
     best_f05 = -1.0
     
     for t in thresholds:
