@@ -30,7 +30,7 @@ def build_training_dataset_country(
     part_corpus = df_corpus.filter(pl.col("country") == country)
     print(f"   Building training data for [{country}]: {len(part_s1):,} S1 queries, {len(part_corpus):,} corpus rows...")
     
-    blocker = FastOptimizedBlocker(max_candidates=60)
+    blocker = FastOptimizedBlocker(max_candidates=100)
     blocker.fit_corpus(part_corpus)
     
     ids = part_s1["entity_id"].to_list()
@@ -217,7 +217,7 @@ def run_end_to_end_pipeline():
         part_corpus = test_corpus_full.filter(pl.col("country") == country)
         print(f"      S1: {len(part_s1):,} queries | Corpus (S2+S3): {len(part_corpus):,} records")
         
-        country_blocker = FastOptimizedBlocker(max_candidates=60)
+        country_blocker = FastOptimizedBlocker(max_candidates=100)
         country_blocker.fit_corpus(part_corpus)
         cand_map = country_blocker.query(part_s1)
         

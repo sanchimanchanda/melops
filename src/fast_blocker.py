@@ -33,7 +33,7 @@ class FastOptimizedBlocker:
     Sub-linear Multi-Key Inverted Index Blocker with Frequency Capping.
     Processes 1M queries against 10M records in under 15 seconds.
     """
-    def __init__(self, max_candidates: int = 12, max_postings_per_key: int = 30000):
+    def __init__(self, max_candidates: int = 12, max_postings_per_key: int = 20000):
         self.max_candidates = max_candidates
         self.max_postings = max_postings_per_key
         self.inverted_index = defaultdict(list)
@@ -58,9 +58,6 @@ class FastOptimizedBlocker:
             for t in tokens:
                 if len(t) >= 3:
                     self.inverted_index[f"n1:{t}"].append(cid)
-                if len(t) >= 4:
-                    for j in range(len(t) - 3):
-                        self.inverted_index[f"c4:{t[j:j+4]}"].append(cid)
             for j in range(len(tokens) - 1):
                 self.inverted_index[f"n2:{tokens[j]}_{tokens[j+1]}"].append(cid)
                 
@@ -128,14 +125,6 @@ class FastOptimizedBlocker:
                         w = self.idf[k] * 2.0
                         for cid in (matched if len(matched) <= max_p else matched[:max_p]):
                             counts[cid] += w
-                if len(t) >= 4:
-                    for j in range(len(t) - 3):
-                        k = f"c4:{t[j:j+4]}"
-                        matched = self.inverted_index.get(k)
-                        if matched:
-                            w = self.idf[k] * 0.5
-                            for cid in (matched if len(matched) <= max_p else matched[:max_p]):
-                                counts[cid] += w
             for j in range(len(tokens) - 1):
                 k = f"n2:{tokens[j]}_{tokens[j+1]}"
                 matched = self.inverted_index.get(k)
