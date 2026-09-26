@@ -33,7 +33,7 @@ class FastOptimizedBlocker:
     Sub-linear Multi-Key Inverted Index Blocker with Frequency Capping.
     Processes 1M queries against 10M records in under 15 seconds.
     """
-    def __init__(self, max_candidates: int = 12, max_postings_per_key: int = 1500):
+    def __init__(self, max_candidates: int = 12, max_postings_per_key: int = 30000):
         self.max_candidates = max_candidates
         self.max_postings = max_postings_per_key
         self.inverted_index = defaultdict(list)
@@ -53,15 +53,30 @@ class FastOptimizedBlocker:
             norm_name = fast_normalize(names[i])
             norm_addr = fast_normalize(addrs[i])
             self.records[cid] = (norm_name, norm_addr)
-            
             # 1. Name Keys
             tokens = [t for t in norm_name.split() if t not in STOPWORDS]
             for t in tokens:
                 if len(t) >= 3:
                     self.inverted_index[f"n1:{t}"].append(cid)
+                if len(t) >= 4:
+                    for j in range(len(t) - 3):
+                        self.inverted_index[f"c4:{t[j:j+4]}"].append(cid)
             for j in range(len(tokens) - 1):
                 self.inverted_index[f"n2:{tokens[j]}_{tokens[j+1]}"].append(cid)
                 
+            # 2. Address Keys
+            if addrs[i] is not None and str(addrs[i]) != "None":
+                raw_addr = str(addrs[i])
+                addr_tokens = [t for t in fast_normalize(raw_addr).split() if t not in STOPWORDS and len(t) >= 4]
+                for t in addr_tokens:
+                    self.inverted_index[f"a1:{t}"].append(cid)
+                
+                # Zip code (5 digits)
+                import re
+                zips = re.findall(r'\b\d{5}\b', raw_addr)
+                if zips:
+                    self.inverted_index[f"z:{zips[-1]}"].append(cid)
+                    
             compact = norm_name.replace(" ", "")
             if len(compact) >= 5:
                 self.inverted_index[f"c5:{compact[:5]}"].append(cid)
@@ -113,6 +128,14 @@ class FastOptimizedBlocker:
                         w = self.idf[k] * 2.0
                         for cid in (matched if len(matched) <= max_p else matched[:max_p]):
                             counts[cid] += w
+                if len(t) >= 4:
+                    for j in range(len(t) - 3):
+                        k = f"c4:{t[j:j+4]}"
+                        matched = self.inverted_index.get(k)
+                        if matched:
+                            w = self.idf[k] * 0.5
+                            for cid in (matched if len(matched) <= max_p else matched[:max_p]):
+                                counts[cid] += w
             for j in range(len(tokens) - 1):
                 k = f"n2:{tokens[j]}_{tokens[j+1]}"
                 matched = self.inverted_index.get(k)
@@ -121,6 +144,27 @@ class FastOptimizedBlocker:
                     for cid in (matched if len(matched) <= max_p else matched[:max_p]):
                         counts[cid] += w
                         
+            # Address keys
+            if norm_addr:
+                addr_tokens = [t for t in norm_addr.split() if t not in STOPWORDS and len(t) >= 4]
+                for t in addr_tokens:
+                    k = f"a1:{t}"
+                    matched = self.inverted_index.get(k)
+                    if matched:
+                        w = self.idf[k] * 1.5
+                        for cid in (matched if len(matched) <= max_p else matched[:max_p]):
+                            counts[cid] += w
+                
+                import re
+                zips = re.findall(r'\b\d{5}\b', str(addrs[i]))
+                if zips:
+                    k = f"z:{zips[-1]}"
+                    matched = self.inverted_index.get(k)
+                    if matched:
+                        w = 5.0  # High weight for identical zip
+                        for cid in (matched if len(matched) <= max_p else matched[:max_p]):
+                            counts[cid] += w
+                            
             # Compact 5-gram key
             compact = norm_name.replace(" ", "")
             if len(compact) >= 5:

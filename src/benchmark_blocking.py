@@ -5,7 +5,7 @@ import os
 sys.path.insert(0, os.path.abspath("."))
 import time
 import polars as pl
-from src.blocking import FastMultiKeyBlocker
+from src.fast_blocker import FastOptimizedBlocker
 
 def benchmark_blocking():
     print("=" * 60)
@@ -37,7 +37,7 @@ def benchmark_blocking():
     print(f"Loaded {len(df_corpus):,} corpus records in {time.time() - t0:.2f}s.")
     
     # Partition by country
-    blocker = FastMultiKeyBlocker(max_candidates_per_s1=15)
+    blocker = FastOptimizedBlocker(max_candidates=60)
     blocker.fit_corpus(df_corpus)
     
     candidate_map = blocker.query(val_s1)
