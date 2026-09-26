@@ -56,10 +56,11 @@ class FastOptimizedBlocker:
             
             # 1. Name Keys
             tokens = [t for t in norm_name.split() if t not in STOPWORDS]
-            if len(tokens) >= 2:
-                self.inverted_index[f"n2:{tokens[0]}_{tokens[1]}"].append(cid)
-            elif len(tokens) == 1 and len(tokens[0]) >= 4:
-                self.inverted_index[f"n1:{tokens[0]}"].append(cid)
+            for t in tokens:
+                if len(t) >= 3:
+                    self.inverted_index[f"n1:{t}"].append(cid)
+            for j in range(len(tokens) - 1):
+                self.inverted_index[f"n2:{tokens[j]}_{tokens[j+1]}"].append(cid)
                 
             compact = norm_name.replace(" ", "")
             if len(compact) >= 5:
@@ -103,19 +104,20 @@ class FastOptimizedBlocker:
             counts = defaultdict(int)
             tokens = [t for t in norm_name.split() if t not in STOPWORDS]
             
-            # Name pair key
-            if len(tokens) >= 2:
-                k = f"n2:{tokens[0]}_{tokens[1]}"
+            # Name keys
+            for t in tokens:
+                if len(t) >= 3:
+                    k = f"n1:{t}"
+                    matched = self.inverted_index.get(k)
+                    if matched:
+                        w = self.idf[k] * 2.0
+                        for cid in (matched if len(matched) <= max_p else matched[:max_p]):
+                            counts[cid] += w
+            for j in range(len(tokens) - 1):
+                k = f"n2:{tokens[j]}_{tokens[j+1]}"
                 matched = self.inverted_index.get(k)
                 if matched:
-                    w = self.idf[k] * 2.0
-                    for cid in (matched if len(matched) <= max_p else matched[:max_p]):
-                        counts[cid] += w
-            elif len(tokens) == 1 and len(tokens[0]) >= 4:
-                k = f"n1:{tokens[0]}"
-                matched = self.inverted_index.get(k)
-                if matched:
-                    w = self.idf[k] * 2.0
+                    w = self.idf[k] * 3.0
                     for cid in (matched if len(matched) <= max_p else matched[:max_p]):
                         counts[cid] += w
                         

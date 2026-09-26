@@ -30,7 +30,7 @@ def build_training_dataset_country(
     part_corpus = df_corpus.filter(pl.col("country") == country)
     print(f"   Building training data for [{country}]: {len(part_s1):,} S1 queries, {len(part_corpus):,} corpus rows...")
     
-    blocker = FastOptimizedBlocker(max_candidates=30)
+    blocker = FastOptimizedBlocker(max_candidates=60)
     blocker.fit_corpus(part_corpus)
     
     ids = part_s1["entity_id"].to_list()
@@ -114,7 +114,7 @@ def run_end_to_end_pipeline():
             val_gt_map[row["source1_entity_id"]] = set()
             
     # Sample training S1 entities (excluding validation)
-    train_s1_sample = train_s1_full.filter(~pl.col("entity_id").is_in(val_s1_ids)).head(400000)
+    train_s1_sample = train_s1_full.filter(~pl.col("entity_id").is_in(val_s1_ids)).head(1000000)
     sample_ids = set(train_s1_sample["entity_id"].to_list())
     train_gt_map = {}
     for row in train_gt_full.filter(pl.col("source1_entity_id").is_in(sample_ids)).iter_rows(named=True):
@@ -217,7 +217,7 @@ def run_end_to_end_pipeline():
         part_corpus = test_corpus_full.filter(pl.col("country") == country)
         print(f"      S1: {len(part_s1):,} queries | Corpus (S2+S3): {len(part_corpus):,} records")
         
-        country_blocker = FastOptimizedBlocker(max_candidates=30)
+        country_blocker = FastOptimizedBlocker(max_candidates=60)
         country_blocker.fit_corpus(part_corpus)
         cand_map = country_blocker.query(part_s1)
         
@@ -248,23 +248,7 @@ def run_end_to_end_pipeline():
                         valid_cids.append(cid)
                 if cand_feats:
                     probs = model.predict_proba(np.array(cand_feats, dtype=np.float32))
-                    
-                    scored = []
-                    for cid, p in zip(valid_cids, probs):
-                        scored.append((cid, float(p)))
-                    scored.sort(key=lambda x: x[1], reverse=True)
-                    
-                    matched_ids = []
-                    has_s2, has_s3 = False, False
-                    for cid, p in scored:
-                        if p >= best_threshold:
-                            if cid.startswith("S2-") and not has_s2:
-                                matched_ids.append(cid)
-                                has_s2 = True
-                            elif cid.startswith("S3-") and not has_s3:
-                                matched_ids.append(cid)
-                                has_s3 = True
-                                
+                    matched_ids = [cid for cid, p in zip(valid_cids, probs) if p >= best_threshold]
                     final_matching_results[s1_id] = matched_ids
                     
     # ---------------------------------------------------------
