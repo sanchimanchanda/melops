@@ -11,12 +11,25 @@ from src.fast_blocker import FastOptimizedBlocker, fast_normalize
 from src.feature_engine import compute_pairwise_features
 from src.model import EntityMatchingModel
 
-def process_chunk(chunk_indices, p_ids, p_names, p_addrs, cand_map, records_dict, model_path, best_threshold):
+def process_chunk(chunk_indices, p_ids, p_names, p_addrs, country_blocker, model_path, best_threshold):
     model = EntityMatchingModel()
     model.load(model_path)
     
     local_matching = {}
     local_candidates = {}
+    
+    # Create mini dataframe for this chunk
+    chunk_df = pl.DataFrame({
+        "entity_id": [p_ids[j] for j in chunk_indices],
+        "business_name": [p_names[j] for j in chunk_indices],
+        "business_address": [p_addrs[j] for j in chunk_indices],
+    })
+    
+    # Run the query logic natively inside this worker!
+    # This fully parallelizes the 6.6 hour Candidate Generation phase.
+    cand_map = country_blocker.query(chunk_df)
+    
+    records_dict = country_blocker.records
     
     for i in chunk_indices:
         s1_id = p_ids[i]
@@ -46,7 +59,7 @@ def process_chunk(chunk_indices, p_ids, p_names, p_addrs, cand_map, records_dict
 
 def resume_inference():
     print("=" * 70)
-    print("🚀 Resuming Test Inference with PARALLEL PROCESSING")
+    print("🚀 Resuming Test Inference with PARALLEL BLOCKING + SCORING")
     print("=" * 70)
     
     start_time = time.time()
@@ -80,14 +93,13 @@ def resume_inference():
         
         country_blocker = FastOptimizedBlocker(max_candidates=100)
         country_blocker.fit_corpus(part_corpus)
-        cand_map = country_blocker.query(part_s1)
         
         p_ids = part_s1["entity_id"].to_list()
         p_names = part_s1["business_name"].to_list()
         p_addrs = part_s1["business_address"].to_list()
         n_part = len(p_ids)
         
-        print(f"      Parallel scoring on {n_jobs} cores for [{country}]...")
+        print(f"      Parallel QUERYING + SCORING on {n_jobs} cores for [{country}]...")
         
         chunk_size = 5000
         indices = list(range(n_part))
@@ -95,7 +107,7 @@ def resume_inference():
         
         results = Parallel(n_jobs=n_jobs, backend="multiprocessing")(
             delayed(process_chunk)(
-                chunk, p_ids, p_names, p_addrs, cand_map, country_blocker.records, model_path, best_threshold
+                chunk, p_ids, p_names, p_addrs, country_blocker, model_path, best_threshold
             ) for chunk in tqdm(chunks, desc=f"Parallel Chunks for {country}")
         )
         
