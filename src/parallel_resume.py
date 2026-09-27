@@ -2,27 +2,57 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath("."))
 import time
-import subprocess
 import numpy as np
 import polars as pl
 from tqdm import tqdm
-import joblib
+from joblib import Parallel, delayed
 
 from src.fast_blocker import FastOptimizedBlocker, fast_normalize
 from src.feature_engine import compute_pairwise_features
+from src.model import EntityMatchingModel
+
+def process_chunk(chunk_indices, p_ids, p_names, p_addrs, cand_map, records_dict, model_path, best_threshold):
+    model = EntityMatchingModel()
+    model.load(model_path)
+    
+    local_matching = {}
+    local_candidates = {}
+    
+    for i in chunk_indices:
+        s1_id = p_ids[i]
+        s1_name = str(p_names[i] or "")
+        s1_addr = str(p_addrs[i] or "")
+        s1_nname = fast_normalize(s1_name)
+        s1_naddr = fast_normalize(s1_addr)
+        
+        candidates = cand_map.get(s1_id, [])
+        local_candidates[s1_id] = candidates
+        
+        if candidates:
+            cand_feats = []
+            valid_cids = []
+            for cid in candidates:
+                if cid in records_dict:
+                    c_nname, c_naddr = records_dict[cid]
+                    feats = compute_pairwise_features(s1_name, s1_addr, s1_nname, s1_naddr, cid, "", c_nname, c_naddr)
+                    cand_feats.append(feats)
+                    valid_cids.append(cid)
+            if cand_feats:
+                probs = model.predict_proba(np.array(cand_feats, dtype=np.float32))
+                matched_ids = [cid for cid, p in zip(valid_cids, probs) if p >= best_threshold]
+                local_matching[s1_id] = matched_ids
+                
+    return local_matching, local_candidates
 
 def resume_inference():
     print("=" * 70)
-    print("🚀 Resuming Test Inference from Saved Model")
+    print("🚀 Resuming Test Inference with PARALLEL PROCESSING")
     print("=" * 70)
     
     start_time = time.time()
     
-    print("\n📦 Loading Model and Setting Threshold...")
-    from src.model import EntityMatchingModel
-    model = EntityMatchingModel()
-    model.load("models/lightgbm_matcher.joblib")
     best_threshold = 0.850
+    model_path = "models/lightgbm_matcher.joblib"
     print(f"Loaded LightGBM model. Using Threshold: {best_threshold}")
     
     print("\n🚀 Running Test Inference (Partitioned by Country: US, India, France)...")
@@ -37,7 +67,8 @@ def resume_inference():
     
     countries = test_s1_full["country"].unique().to_list()
     
-    # We will prioritize US first, then France, then India.
+    n_jobs = 6  # Use 6 cores for parallel execution
+    
     for country in ["US", "France", "India"]:
         if country not in countries:
             continue
@@ -56,34 +87,22 @@ def resume_inference():
         p_addrs = part_s1["business_address"].to_list()
         n_part = len(p_ids)
         
-        print(f"      Scoring candidate pairs for [{country}]...")
-        for i in tqdm(range(n_part), desc=f"Scoring {country}"):
-            s1_id = p_ids[i]
-            s1_name = str(p_names[i] or "")
-            s1_addr = str(p_addrs[i] or "")
-            s1_nname = fast_normalize(s1_name)
-            s1_naddr = fast_normalize(s1_addr)
-            
-            candidates = cand_map.get(s1_id, [])
-            final_candidate_pairs[s1_id] = candidates
-            
-            if candidates:
-                cand_feats = []
-                valid_cids = []
-                for cid in candidates:
-                    if cid in country_blocker.records:
-                        c_nname, c_naddr = country_blocker.records[cid]
-                        feats = compute_pairwise_features(s1_name, s1_addr, s1_nname, s1_naddr, cid, "", c_nname, c_naddr)
-                        cand_feats.append(feats)
-                        valid_cids.append(cid)
-                if cand_feats:
-                    probs = model.predict_proba(np.array(cand_feats, dtype=np.float32))
-                    matched_ids = [cid for cid, p in zip(valid_cids, probs) if p >= best_threshold]
-                    final_matching_results[s1_id] = matched_ids
+        print(f"      Parallel scoring on {n_jobs} cores for [{country}]...")
+        
+        chunk_size = 5000
+        indices = list(range(n_part))
+        chunks = [indices[i:i + chunk_size] for i in range(0, n_part, chunk_size)]
+        
+        results = Parallel(n_jobs=n_jobs, backend="multiprocessing")(
+            delayed(process_chunk)(
+                chunk, p_ids, p_names, p_addrs, cand_map, country_blocker.records, model_path, best_threshold
+            ) for chunk in tqdm(chunks, desc=f"Parallel Chunks for {country}")
+        )
+        
+        for local_matching, local_candidates in results:
+            final_matching_results.update(local_matching)
+            final_candidate_pairs.update(local_candidates)
                     
-    # ---------------------------------------------------------
-    # STAGE 6: Write Output TSV Files & Pre-Flight Validation
-    # ---------------------------------------------------------
     print("\n💾 Writing Output TSV Files...")
     matching_tsv_path = "output/matching_results.tsv"
     candidate_tsv_path = "output/candidate_pairs.tsv"
@@ -100,7 +119,7 @@ def resume_inference():
             f_c.write(f"{s1_id}\t{','.join(c_list)}\n")
             
     print(f"   Successfully written: {matching_tsv_path} and {candidate_tsv_path}")
-    print(f"\n🎉 Resume Pipeline Finished Successfully in {time.time() - start_time:.2f}s!")
+    print(f"\n🎉 Parallel Pipeline Finished Successfully in {time.time() - start_time:.2f}s!")
 
 if __name__ == "__main__":
     resume_inference()
