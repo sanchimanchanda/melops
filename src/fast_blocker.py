@@ -14,7 +14,9 @@ STOPWORDS = {
     "the", "inc", "corp", "corporation", "pvt", "ltd", "limited", "private",
     "llc", "group", "enterprises", "company", "co", "services", "solutions",
     "international", "associates", "center", "industries", "trading", "hospital",
-    "clinic", "market", "marketing", "store", "shop", "care", "auto", "food"
+    "clinic", "market", "marketing", "store", "shop", "care", "auto", "food",
+    "street", "st", "avenue", "ave", "road", "rd", "floor", "suite", "room", 
+    "rm", "building", "bldg", "boulevard", "blvd", "drive", "dr", "highway", "hwy"
 }
 
 def fast_normalize(s: str) -> str:
